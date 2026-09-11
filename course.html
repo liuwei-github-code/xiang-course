@@ -455,5 +455,221 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
   fitStage();
 })();
 </script>
+
+<!-- ===== 沉浸横屏 + 古筝背景音乐（2026-09-12 追加，两文件同步）===== -->
+<style>
+  #fsBtn, #bgmBtn { padding: 6px 10px; font-size: 14px; }
+  #bgmBtn.off { opacity: .45; }
+  body.immersive #topbar, body.immersive #bottombar { display: none; }
+  body.immersive #stageWrap { position: fixed; inset: 0; z-index: 70; background: #0d0a08; }
+  #exitIm {
+    display: none; position: fixed; top: 10px; right: 12px; z-index: 80;
+    width: 38px; height: 38px; border-radius: 50%; border: 1px solid rgba(212,175,55,.7);
+    background: rgba(20,15,12,.72); color: #d4af37; font-size: 17px; cursor: pointer;
+  }
+  body.immersive #exitIm { display: block; }
+  body.immersive #rotateTip { display: none !important; }
+</style>
+<button id="exitIm" title="退出全屏">✕</button>
+<script>
+(function () {
+  'use strict';
+
+  /* ================= 一、沉浸横屏（按钮 + 横放自动） ================= */
+  var menuBtn = document.getElementById('menuBtn');
+  if (menuBtn) {
+    menuBtn.insertAdjacentHTML('beforebegin',
+      '<button class="navbtn" id="bgmBtn" title="背景音乐开关">🎼</button>' +
+      '<button class="navbtn" id="fsBtn" title="全屏 / 退出全屏">⛶</button>');
+  }
+  var fsBtn = document.getElementById('fsBtn');
+  var exitImBtn = document.getElementById('exitIm');
+  var imManual = false, imAuto = false;
+
+  function refit() { setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 60); }
+  function isImmersive() { return document.body.classList.contains('immersive'); }
+
+  function enterIm(manual) {
+    if (isImmersive()) return;
+    document.body.classList.add('immersive');
+    if (manual) imManual = true; else imAuto = true;
+    try {
+      var el = document.documentElement;
+      if (el.requestFullscreen) {
+        var p = el.requestFullscreen({ navigationUI: 'hide' });
+        if (p && p.catch) p.catch(function () {});
+      }
+    } catch (e) {}
+    refit();
+  }
+  function exitIm() {
+    imManual = false; imAuto = false;
+    document.body.classList.remove('immersive');
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+    refit();
+  }
+  if (fsBtn) fsBtn.addEventListener('click', function () { isImmersive() ? exitIm() : enterIm(true); });
+  if (exitImBtn) exitImBtn.addEventListener('click', exitIm);
+  // 用户用系统手势退出原生全屏时，同步退出沉浸样式
+  document.addEventListener('fullscreenchange', function () {
+    if (!document.fullscreenElement && isImmersive()) {
+      imManual = false; imAuto = false;
+      document.body.classList.remove('immersive');
+      refit();
+    }
+  });
+  // 手机横放自动进入，竖回自动退出（仅自动模式进入的才自动退出）
+  function isPhone() {
+    return window.matchMedia && window.matchMedia('(pointer:coarse)').matches &&
+      Math.min(window.screen.width, window.screen.height) < 600;
+  }
+  var oriTimer = null;
+  function checkOri() {
+    clearTimeout(oriTimer);
+    oriTimer = setTimeout(function () {
+      if (!isPhone()) return;
+      var land = window.innerWidth > window.innerHeight;
+      if (land && !isImmersive()) enterIm(false);
+      else if (!land && imAuto && !imManual) exitIm();
+    }, 200);
+  }
+  window.addEventListener('orientationchange', checkOri);
+  window.addEventListener('resize', checkOri);
+
+  /* ================= 二、古筝背景音乐（Karplus-Strong 拨弦合成，无音频文件） ================= */
+  var bgmOn = true, bgmStarted = false, actx = null, bgmGain = null, ducked = false;
+  var noteBufs = {};   // freq -> AudioBuffer
+  var SR = 44100;
+
+  // D 宫五声音阶（古筝定弦感）：D3 E3 #F3 A3 B3 D4 E4 #F4 A4
+  var SCALE = [146.83, 164.81, 185.00, 220.00, 246.94, 293.66, 329.63, 369.99, 440.00];
+  // 慢板 54 BPM，两乐句循环。[音级, 起拍(拍), 力度, 低八度标记]
+  var BEAT = 60 / 54, PHRASE_LEN = 32;
+  var PHRASE_A = [
+    [0, 0, .9, 1], [4, 2, .7], [5, 3, .65], [7, 5, .8], [5, 7, .6],
+    [4, 9, .7], [3, 11, .6], [2, 12, .65], [0, 14, .9],
+    [3, 17, .6], [4, 19, .7], [7, 21, .75], [8, 23, .8],
+    [7, 25, .6], [5, 27, .65], [4, 28, .7], [2, 30, .6, 1]
+  ];
+  var PHRASE_B = [
+    [0, 0, .9, 1], [2, 2, .6], [3, 3, .6], [4, 5, .7], [7, 7, .8],
+    [8, 9, .7], [7, 11, .6], [5, 12, .65], [4, 14, .85],
+    [3, 17, .6], [4, 19, .7], [5, 21, .7], [7, 23, .8],
+    [8, 25, .7], [7, 27, .6], [5, 28, .65], [4, 30, .7, 1]
+  ];
+
+  // Karplus-Strong 拨弦：噪声激励 + 环形延迟反馈（自带低通与指数衰减）
+  function ksPluck(freq, dur) {
+    var n = Math.floor(SR * dur);
+    var out = new Float32Array(n);
+    var N = Math.max(2, Math.round(SR / freq));
+    var ring = new Float32Array(N);
+    for (var i = 0; i < N; i++) ring[i] = Math.random() * 2 - 1;
+    var idx = 0, damp = 1 - 3.2 / (SR * dur);   // 约 60% 能量在 dur 内衰减
+    for (var t = 0; t < n; t++) {
+      var cur = ring[idx];
+      out[t] = cur;
+      ring[idx] = (cur + ring[(idx + 1) % N]) * 0.5 * damp;
+      idx = (idx + 1) % N;
+    }
+    for (var a = 0; a < 24; a++) out[a] *= a / 24;   // 去爆音
+    var buf = actx.createBuffer(1, n, SR);
+    buf.copyToChannel(out, 0);
+    return buf;
+  }
+  function noteBuf(freq) {
+    var key = Math.round(freq * 100);
+    if (!noteBufs[key]) noteBufs[key] = ksPluck(freq, 3.2);
+    return noteBufs[key];
+  }
+  // 简易混响：噪声指数衰减脉冲响应
+  function makeImpulse(sec) {
+    var len = Math.floor(SR * sec);
+    var buf = actx.createBuffer(2, len, SR);
+    for (var ch = 0; ch < 2; ch++) {
+      var d = buf.getChannelData(ch);
+      for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
+    }
+    return buf;
+  }
+  function pluck(freq, when, vel) {
+    var src = actx.createBufferSource();
+    src.buffer = noteBuf(freq);
+    var g = actx.createGain();
+    g.gain.value = vel;
+    src.connect(g);
+    g.connect(bgmGain.dry);
+    g.connect(bgmGain.wet);
+    src.start(when);
+  }
+  function schedulePhrase(phrase, t0) {
+    for (var i = 0; i < phrase.length; i++) {
+      var ev = phrase[i];
+      var f = SCALE[ev[0]];
+      pluck(f, t0 + ev[1] * BEAT, ev[2] * 0.5);
+      if (ev[3]) pluck(f / 2, t0 + ev[1] * BEAT, ev[2] * 0.22);   // 低八度衬底
+    }
+  }
+  function bgmLoop(t0) {
+    if (!bgmOn) return;
+    schedulePhrase(PHRASE_A, t0);
+    schedulePhrase(PHRASE_B, t0 + PHRASE_LEN * BEAT);
+    setTimeout(function () { bgmLoop(t0 + 2 * PHRASE_LEN * BEAT); },
+      (2 * PHRASE_LEN * BEAT - (actx.currentTime - t0)) * 1000 - 800);
+  }
+  function setBgmLevel() {
+    if (!bgmGain) return;
+    var target = !bgmOn ? 0 : (ducked ? 0.04 : 0.13);
+    bgmGain.master.gain.setTargetAtTime(target, actx.currentTime, 0.5);
+  }
+  function initBgm() {
+    if (bgmStarted) { if (actx && actx.state === 'suspended') actx.resume(); return; }
+    bgmStarted = true;
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      actx = new AC();
+      SR = actx.sampleRate;   // 必须跟随设备采样率（本机 48000），否则 ConvolverNode 报错
+      var master = actx.createGain();
+      var dry = actx.createGain(); dry.gain.value = 0.8;
+      var wetGain = actx.createGain(); wetGain.gain.value = 0.28;
+      var conv = actx.createConvolver(); conv.buffer = makeImpulse(2.2);
+      dry.connect(master);
+      wetGain.connect(conv); conv.connect(master);
+      master.connect(actx.destination);
+      bgmGain = { master: master, dry: dry, wet: wetGain };
+      setBgmLevel();
+      bgmLoop(actx.currentTime + 0.15);
+      // 老师讲课时音乐自动压低。注意：播放器的语音 Audio 对象未挂 DOM，
+      // 捕获阶段媒体事件监听不到，改为观察播放键状态（❚❚=播放中 → 压低）
+      var pb = document.getElementById('playBtn');
+      var syncDuck = function () {
+        ducked = !!(pb && pb.textContent.indexOf('❚') !== -1);
+        setBgmLevel();
+      };
+      if (pb && window.MutationObserver) {
+        new MutationObserver(syncDuck).observe(pb, { childList: true, characterData: true, subtree: true });
+      }
+      syncDuck();
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && actx.state === 'suspended') actx.resume();
+      });
+    } catch (e) { window.__bgmErr = String((e && e.stack) || e); }
+  }
+  var startBtn = document.getElementById('startBtn');
+  if (startBtn) startBtn.addEventListener('click', initBgm);
+  var bgmBtn = document.getElementById('bgmBtn');
+  if (bgmBtn) bgmBtn.addEventListener('click', function () {
+    bgmOn = !bgmOn;
+    this.classList.toggle('off', !bgmOn);
+    if (bgmOn) { initBgm(); if (bgmStarted && actx) bgmLoop(actx.currentTime + 0.1); }
+    setBgmLevel();
+  });
+
+  // 调试钩子（自动化验收用）
+  window.__immersive = { enter: enterIm, exit: exitIm, isOn: isImmersive };
+  window.__bgm = { get ctx() { return actx; }, get gain() { return bgmGain && bgmGain.master.gain.value; }, get on() { return bgmOn; } };
+})();
+</script>
+
 </body>
 </html>
