@@ -34,7 +34,7 @@
 <button id="retry" onclick="location.reload()">加载失败 · 点击重试</button>
 <script>
 (function () {
-  var URL = 'https://cdn.jsdelivr.net/gh/liuwei-github-code/xiang-course@2ad467b588aaddeb04d8827db3a23abfdfc04cd4/course.txt';
+  var URL = 'https://cdn.jsdelivr.net/gh/liuwei-github-code/xiang-course@e30de8b2b1795535441db13c403f141fb6a9be7c/course.txt';
   var bar = document.getElementById('bar'), pct = document.getElementById('pct');
   fetch(URL).then(function (res) {
     if (!res.ok) throw new Error('http ' + res.status);
