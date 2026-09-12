@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#2a2320">
 <title>传统制香入门 · 第一讲 识香材</title>
 <style>
   :root {
@@ -457,6 +461,8 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
 </script>
 
 
+
+
 <!-- ===== 沉浸横屏 v2 + 古筝 BGM（2026-09-12 重写，两文件同步）===== -->
 <style>
   #fsBtn, #bgmBtn { padding: 6px 10px; font-size: 14px; }
@@ -499,7 +505,22 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
   }
   body.immersive #fsSub:empty { display: none; }
   body.immersive #fsSub { display: block; }
+  #pwaHint {
+    position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 46px); left: 50%;
+    transform: translateX(-50%); z-index: 90; display: none; align-items: center; gap: 10px;
+    background: rgba(20,15,12,.9); border: 1px solid rgba(212,175,55,.5); color: #e8dcc8;
+    font-size: 12.5px; padding: 8px 12px; border-radius: 10px; max-width: 86vw; line-height: 1.5;
+  }
+  #pwaHint.show { display: flex; }
+  #pwaHint button {
+    flex: none; background: none; border: 1px solid #4a3d30; color: #d4af37;
+    border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer;
+  }
 </style>
+<div id="pwaHint">
+  <span>想隐藏 Safari 浏览器栏获得真全屏：点底部分享 →「添加到主屏幕」，从主屏图标进入</span>
+  <button id="pwaHintOk">知道了</button>
+</div>
 <div id="fsTop">
   <span id="fsTitle"></span>
   <span class="fsSpacer"></span>
@@ -546,32 +567,39 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
     if (manual) imManual = true; else imAuto = true;
     try {
       var el = document.documentElement;
-      if (el.requestFullscreen) {
-        var p = el.requestFullscreen({ navigationUI: 'hide' });
+      var rfs = el.requestFullscreen || el.webkitRequestFullscreen;   // Safari 旧版需 webkit 前缀
+      if (rfs) {
+        var p = rfs.call(el, { navigationUI: 'hide' });
         if (p && p.catch) p.catch(function () {});
       }
     } catch (e) {}
     showUI();
     refit();
+    maybeShowPwaHint();
   }
   function exitIm() {
     imManual = false; imAuto = false;
     clearTimeout(hideTimer);
     document.body.classList.remove('immersive');
     document.body.classList.remove('uiHidden');
-    try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+    try {
+      var fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fsEl) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    } catch (e) {}
     refit();
   }
   if (fsBtn) fsBtn.addEventListener('click', function () { isImmersive() ? exitIm() : enterIm(true); });
   document.getElementById('fsExit').addEventListener('click', exitIm);
-  document.addEventListener('fullscreenchange', function () {
-    if (!document.fullscreenElement && isImmersive()) {
+  var onFsChange = function () {
+    if (!(document.fullscreenElement || document.webkitFullscreenElement) && isImmersive()) {
       imManual = false; imAuto = false;
       document.body.classList.remove('immersive');
       document.body.classList.remove('uiHidden');
       refit();
     }
-  });
+  };
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
   // 点课件区域：隐藏则唤出，唤出则隐藏（悬浮条上的点击不触发——它们不是 stageWrap 子元素）
   stageWrap.addEventListener('click', function () {
     if (!isImmersive()) return;
@@ -591,7 +619,7 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
   // 手机横放自动进入，竖回自动退出（仅自动进入的才自动退出）
   function isPhone() {
     return window.matchMedia && window.matchMedia('(pointer:coarse)').matches &&
-      Math.min(window.screen.width, window.screen.height) < 600;
+      Math.min(window.screen.width, window.screen.height) < 840;
   }
   var oriTimer = null;
   function checkOri() {
@@ -605,6 +633,9 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
   }
   window.addEventListener('orientationchange', checkOri);
   window.addEventListener('resize', checkOri);
+  // 直开即为横屏时也自动进入（开始课后触发一次检查）
+  var startBtnEl = document.getElementById('startBtn');
+  if (startBtnEl) startBtnEl.addEventListener('click', function () { setTimeout(checkOri, 400); });
 
   /* ---------- 悬浮控件镜像主引擎状态（不动原引擎代码） ---------- */
   var pb = document.getElementById('playBtn');
@@ -696,6 +727,28 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
   if (bgmBtn) bgmBtn.addEventListener('click', toggleBgm);
   if (fsBgm) fsBgm.addEventListener('click', toggleBgm);
   syncBgmBtns();
+
+  /* ---------- iOS 真全屏指引（iPhone/iPad Safari 无法编程隐藏浏览器栏） ---------- */
+  var ua = navigator.userAgent || '';
+  var isIOS = /iP(hone|ad|od)/.test(ua);
+  var inWeChat = /MicroMessenger/i.test(ua);
+  var standalone = navigator.standalone === true ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  var pwaHint = document.getElementById('pwaHint');
+  function maybeShowPwaHint() {
+    if (!pwaHint || !isIOS || inWeChat || standalone) return;
+    try { if (localStorage.getItem('maic:pwaHintOk')) return; } catch (e) {}
+    pwaHint.classList.add('show');
+    setTimeout(function () { pwaHint.classList.remove('show'); }, 12000);
+  }
+  if (pwaHint) {
+    document.getElementById('pwaHintOk').addEventListener('click', function (e) {
+      e.stopPropagation();
+      pwaHint.classList.remove('show');
+      try { localStorage.setItem('maic:pwaHintOk', '1'); } catch (err) {}
+    });
+    pwaHint.addEventListener('click', function (e) { e.stopPropagation(); });
+  }
 
   // 调试钩子（自动化验收用）
   window.__immersive = { enter: enterIm, exit: exitIm, isOn: isImmersive, uiHidden: uiHidden };
