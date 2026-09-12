@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -466,6 +466,7 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
 
 
 
+
 <!-- ===== 沉浸横屏 v2 + 古筝 BGM（2026-09-12 重写，两文件同步）===== -->
 <style>
   #fsBtn, #bgmBtn { padding: 6px 10px; font-size: 14px; }
@@ -481,7 +482,7 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
   }
   body.immersive #fsTop, body.immersive #fsBottom { display: flex; }
   #fsTop { top: 0; background: linear-gradient(rgba(13,10,8,.88), rgba(13,10,8,0)); padding-top: max(10px, env(safe-area-inset-top)); }
-  #fsBottom { bottom: 0; background: linear-gradient(rgba(13,10,8,0), rgba(13,10,8,.88)); padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  #fsBottom { bottom: 0; background: linear-gradient(rgba(13,10,8,0), rgba(13,10,8,.88)); padding-bottom: max(18px, calc(env(safe-area-inset-bottom) + 12px)); }
   body.immersive.uiHidden #fsTop, body.immersive.uiHidden #fsBottom { opacity: 0; pointer-events: none; }
   #fsTitle {
     font-size: 13px; color: #e8dcc8; letter-spacing: 1px; overflow: hidden;
@@ -492,6 +493,8 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
     background: rgba(42,35,32,.72); border: 1px solid #4a3d30; color: #e8dcc8;
     border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer;
     -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
   }
   .fsBtn:active { border-color: #d4af37; }
   .fsBtn:disabled { opacity: .3; }
@@ -669,6 +672,18 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
   fsPlay.addEventListener('click', function () { pb.click(); });
   fsPrev.addEventListener('click', function () { prevB.click(); });
   fsNext.addEventListener('click', function () { nextB.click(); });
+  // iOS 主屏（PWA）模式下按钮 click 合成不稳定：所有悬浮按钮加 touchend 直通，
+  // preventDefault 抑制后续 click 合成，等效于只触发一次
+  [fsPlay, fsPrev, fsNext,
+   document.getElementById('fsBgm'), document.getElementById('fsExit'),
+   document.getElementById('pwaHintOk')].forEach(function (b) {
+    if (!b) return;
+    b.addEventListener('touchend', function (e) {
+      if (b.disabled) return;
+      e.preventDefault();
+      b.click();
+    }, { passive: false });
+  });
   new MutationObserver(function () { fsPlay.textContent = pb.textContent; })
     .observe(pb, { childList: true, characterData: true, subtree: true });
   new MutationObserver(function () {
