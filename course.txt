@@ -463,18 +463,21 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
 
 
 
+
+
+
 <!-- ===== 沉浸横屏 v2 + 古筝 BGM（2026-09-12 重写，两文件同步）===== -->
 <style>
   #fsBtn, #bgmBtn { padding: 6px 10px; font-size: 14px; }
   #bgmBtn { color: var(--gold); }
   #bgmBtn.off { color: var(--cream); opacity: .45; }
   body.immersive #topbar, body.immersive #bottombar { display: none; }
-  body.immersive #stageWrap { position: fixed; inset: 0; z-index: 70; background: #0d0a08; }
+  body.immersive #stageWrap { position: fixed; inset: 0; z-index: 70; background: #0d0a08; cursor: pointer; }
   body.immersive #rotateTip { display: none !important; }
   /* 沉浸态悬浮控件：视频播放器式，自动隐藏、点屏唤出 */
   #fsTop, #fsBottom {
     position: fixed; left: 0; right: 0; z-index: 82; display: none; align-items: center;
-    gap: 10px; padding: 10px 14px; opacity: 1; transition: opacity .25s;
+    gap: 10px; padding: 10px 14px; opacity: 1; transition: opacity .25s; cursor: pointer;
   }
   body.immersive #fsTop, body.immersive #fsBottom { display: flex; }
   #fsTop { top: 0; background: linear-gradient(rgba(13,10,8,.88), rgba(13,10,8,0)); padding-top: max(10px, env(safe-area-inset-top)); }
@@ -550,7 +553,7 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
   var stageEl = document.getElementById('stage');
   var fsTop = document.getElementById('fsTop');
   var fsBottom = document.getElementById('fsBottom');
-  var imManual = false, imAuto = false, pinned = false, hideTimer = null;
+  var imManual = false, imAuto = false, pinned = false, hideTimer = null, imSuppress = false;
 
   function refit() { setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 60); }
   function isImmersive() { return document.body.classList.contains('immersive'); }
@@ -579,6 +582,7 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
   }
   function exitIm() {
     imManual = false; imAuto = false;
+    imSuppress = true;   // 手动退出后抑制自动重进（refit 的 resize 会触发 checkOri），直到真实转屏
     clearTimeout(hideTimer);
     document.body.classList.remove('immersive');
     document.body.classList.remove('uiHidden');
@@ -601,10 +605,27 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
   document.addEventListener('fullscreenchange', onFsChange);
   document.addEventListener('webkitfullscreenchange', onFsChange);
   // 点课件区域：隐藏则唤出，唤出则隐藏（悬浮条上的点击不触发——它们不是 stageWrap 子元素）
-  stageWrap.addEventListener('click', function () {
+  // iOS WebKit 对无 cursor/无触摸监听的普通 div 不派发 click，必须显式监听 touchend
+  var lastTouchToggle = 0, tSX = 0, tSY = 0;
+  function toggleUI() {
     if (!isImmersive()) return;
     if (uiHidden()) showUI();
     else { clearTimeout(hideTimer); document.body.classList.add('uiHidden'); }
+  }
+  stageWrap.addEventListener('touchstart', function (e) {
+    var t = e.changedTouches[0]; tSX = t.clientX; tSY = t.clientY;
+  }, { passive: true });
+  stageWrap.addEventListener('touchend', function (e) {
+    if (!isImmersive()) return;
+    var t = e.changedTouches[0];
+    if (Math.abs(t.clientX - tSX) > 12 || Math.abs(t.clientY - tSY) > 12) return;   // 滑动/滚动不算点按
+    lastTouchToggle = Date.now();
+    e.preventDefault();   // 阻止 iOS 再合成一次 click 造成双重切换
+    toggleUI();
+  }, { passive: false });
+  stageWrap.addEventListener('click', function () {
+    if (Date.now() - lastTouchToggle < 600) return;   // touchend 已处理
+    toggleUI();
   });
   // 悬浮条任何点击都重置自动隐藏计时
   [fsTop, fsBottom].forEach(function (bar) {
@@ -627,11 +648,12 @@ window.COURSE_DATA = {"courseName": "传统制香入门 · 第一讲 识香材",
     oriTimer = setTimeout(function () {
       if (!isPhone()) return;
       var land = window.innerWidth > window.innerHeight;
-      if (land && !isImmersive()) enterIm(false);
+      if (!land) imSuppress = false;   // 转回竖屏后解除抑制，下次横放可再自动进入
+      if (land && !isImmersive() && !imSuppress) enterIm(false);
       else if (!land && imAuto && !imManual) exitIm();
     }, 200);
   }
-  window.addEventListener('orientationchange', checkOri);
+  window.addEventListener('orientationchange', function () { imSuppress = false; checkOri(); });
   window.addEventListener('resize', checkOri);
   // 直开即为横屏时也自动进入（开始课后触发一次检查）
   var startBtnEl = document.getElementById('startBtn');
