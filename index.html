@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#2a2320">
 <title>传统制香入门 · 第一讲 识香材</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -34,7 +38,7 @@
 <button id="retry" onclick="location.reload()">加载失败 · 点击重试</button>
 <script>
 (function () {
-  var URL = 'https://cdn.jsdelivr.net/gh/liuwei-github-code/xiang-course@e30de8b2b1795535441db13c403f141fb6a9be7c/course.txt';
+  var URL = 'https://cdn.jsdelivr.net/gh/liuwei-github-code/xiang-course@ec534742172f3e4722d52297d0a62dab2fa7a43f/course.txt';
   var bar = document.getElementById('bar'), pct = document.getElementById('pct');
   fetch(URL).then(function (res) {
     if (!res.ok) throw new Error('http ' + res.status);
